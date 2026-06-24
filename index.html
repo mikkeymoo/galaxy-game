@@ -1,0 +1,905 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>gravity sandbox</title>
+<style>
+  :root{
+    --bg:#06080d;
+    --panel:#0d1118;
+    --line:#1c2430;
+    --ink:#aeb7c4;
+    --dim:#5a6675;
+    --hot:#d8a657;
+    --accent:#7fb3d5;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);overflow:hidden}
+  body{font:12px/1.4 ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  #view{position:fixed;inset:0;display:block;cursor:crosshair;touch-action:none}
+
+  #panel{
+    position:fixed;top:10px;left:10px;width:218px;
+    background:rgba(13,17,24,.86);border:1px solid var(--line);
+    padding:9px 10px;color:var(--ink);user-select:none;
+    max-height:calc(100% - 80px);overflow:auto;
+  }
+  #panel h1{font-size:11px;letter-spacing:.5px;margin:0 0 8px;color:var(--dim);font-weight:600;text-transform:uppercase}
+  .row{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin:5px 0}
+  .row.tight{margin:3px 0}
+  hr{border:0;border-top:1px solid var(--line);margin:8px 0}
+  button{
+    font:inherit;color:var(--ink);background:#10151d;border:1px solid var(--line);
+    padding:4px 7px;cursor:pointer;flex:1 1 auto;min-width:0;
+  }
+  button:hover{border-color:#2c3848;color:#fff}
+  button.on{border-color:var(--accent);color:#cfe6f4}
+  button.warn:hover{border-color:var(--hot);color:var(--hot)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  label.lbl{color:var(--dim);flex:0 0 auto}
+  input[type=range]{flex:1 1 60px;min-width:50px;accent-color:var(--accent);height:14px}
+  input[type=text]{
+    font:inherit;flex:1 1 60px;min-width:40px;background:#10151d;color:var(--ink);
+    border:1px solid var(--line);padding:3px 5px;
+  }
+  select{
+    font:inherit;flex:1 1 auto;background:#10151d;color:var(--ink);
+    border:1px solid var(--line);padding:3px;min-width:0;
+  }
+  .val{color:var(--accent);flex:0 0 38px;text-align:right}
+  .toggle{display:flex;align-items:center;gap:4px;flex:1 1 44%;color:var(--dim);cursor:pointer}
+  .toggle input{accent-color:var(--accent)}
+  #saves{margin-top:4px}
+  .saveitem{display:flex;gap:4px;align-items:center;margin:2px 0}
+  .saveitem span{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+  .saveitem button{flex:0 0 auto;padding:2px 5px}
+  #note{color:var(--dim);min-height:14px;margin-top:4px}
+
+  #hint{
+    position:fixed;left:50%;bottom:64px;transform:translateX(-50%);
+    color:var(--dim);background:rgba(13,17,24,.7);padding:5px 10px;border:1px solid var(--line);
+    pointer-events:none;transition:opacity 1s;opacity:1;
+  }
+  #scrubwrap{
+    position:fixed;left:10px;right:10px;bottom:10px;height:40px;
+    background:rgba(13,17,24,.86);border:1px solid var(--line);
+    display:flex;align-items:center;gap:8px;padding:0 10px;
+  }
+  #scrubwrap label{color:var(--dim);flex:0 0 auto}
+  #scrub{flex:1 1 auto;accent-color:var(--hot)}
+  #scrubstate{flex:0 0 92px;text-align:right;color:var(--dim)}
+  #hud{
+    position:fixed;right:10px;top:10px;text-align:right;color:var(--dim);
+    background:rgba(13,17,24,.6);padding:3px 7px;border:1px solid var(--line);pointer-events:none;
+  }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud"></div>
+
+<div id="panel">
+  <h1>gravity sandbox</h1>
+
+  <div class="row">
+    <button id="playBtn">pause</button>
+    <button id="resetBtn">reset</button>
+    <button id="clearBtn" class="warn">clear all</button>
+  </div>
+
+  <div class="row tight">
+    <label class="lbl">speed</label>
+    <input type="range" id="speed" min="0.25" max="8" step="0.25" value="1">
+    <span class="val" id="speedVal">1x</span>
+  </div>
+
+  <hr>
+
+  <div class="row tight"><label class="lbl">spawn</label></div>
+  <div class="row">
+    <button id="massDust" data-mass="dust">dust</button>
+    <button id="massPlanet" data-mass="planet" class="on">planet</button>
+    <button id="massStar" data-mass="star">star</button>
+  </div>
+  <div class="row tight">
+    <label class="lbl">size</label>
+    <input type="range" id="size" min="0.2" max="5" step="0.1" value="1">
+    <span class="val" id="sizeVal">1.0x</span>
+  </div>
+
+  <hr>
+
+  <div class="row tight"><label class="lbl">tool</label></div>
+  <div class="row">
+    <button id="toolSpawn" class="on">launch</button>
+    <button id="toolBrush">brush</button>
+    <button id="toolErase">eraser</button>
+  </div>
+  <div class="row tight">
+    <label class="lbl">brush r</label>
+    <input type="range" id="brushSize" min="10" max="160" step="2" value="50">
+    <span class="val" id="brushSizeVal">50</span>
+  </div>
+  <div class="row tight">
+    <label class="lbl">brush m</label>
+    <input type="range" id="brushMass" min="0.1" max="6" step="0.1" value="0.6">
+    <span class="val" id="brushMassVal">0.6</span>
+  </div>
+
+  <hr>
+
+  <div class="row">
+    <label class="toggle"><input type="checkbox" id="tgVec"> vectors</label>
+    <label class="toggle"><input type="checkbox" id="tgTrails" checked> trails</label>
+    <label class="toggle"><input type="checkbox" id="tgGrid"> grid</label>
+    <label class="toggle"><input type="checkbox" id="tgSound" checked> sound</label>
+  </div>
+
+  <hr>
+
+  <div class="row tight"><label class="lbl">preset</label></div>
+  <div class="row">
+    <select id="preset">
+      <option value="solar">sun + 3 planets</option>
+      <option value="binary">binary star</option>
+      <option value="figure8">figure-8</option>
+      <option value="cluster">chaotic cluster</option>
+    </select>
+    <button id="loadPreset" style="flex:0 0 auto">load</button>
+  </div>
+
+  <hr>
+
+  <div class="row">
+    <input type="text" id="saveName" placeholder="name" maxlength="24">
+    <button id="saveBtn" style="flex:0 0 auto">save</button>
+  </div>
+  <div id="saves"></div>
+
+  <hr>
+
+  <div class="row">
+    <button id="shareBtn">copy link</button>
+  </div>
+  <div id="note"></div>
+</div>
+
+<div id="hint">drag to launch a body</div>
+
+<div id="scrubwrap">
+  <label>rewind</label>
+  <input type="range" id="scrub" min="0" max="0" value="0" step="1">
+  <span id="scrubstate">live</span>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js"></script>
+<script>
+"use strict";
+
+// ---- constants (world units, G = 1) ----
+const G = 1;
+const BASE_DT = 0.003;        // fixed step
+const SOFT2 = 0.02 * 0.02;    // softening squared
+const VMAX = 60;              // velocity clamp
+const RBASE = 0.08;           // radius = RBASE * mass^(1/3)
+const MERGE_K = 0.7;          // merge when centers closer than this fraction of summed radii
+const BUFFER = 600;           // rewind frames kept
+const VEL_SCALE = 2.0;        // drag length to launch speed
+const TRAIL_LEN = 26;
+
+const MASS = { dust: 0.5, planet: 8, star: 120 };
+
+// ---- canvas / camera ----
+const cv = document.getElementById('view');
+const ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+const cam = { x: 0, y: 0, zoom: 120 };
+
+function resize(){
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = Math.floor(W * DPR);
+  cv.height = Math.floor(H * DPR);
+  cv.style.width = W + 'px';
+  cv.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  buildStars();
+}
+window.addEventListener('resize', resize);
+
+function toScreen(wx, wy){
+  return [ (wx - cam.x) * cam.zoom + W/2, (wy - cam.y) * cam.zoom + H/2 ];
+}
+function toWorld(sx, sy){
+  return [ (sx - W/2) / cam.zoom + cam.x, (sy - H/2) / cam.zoom + cam.y ];
+}
+
+// ---- starfield (static, screen space) ----
+let stars = [];
+function buildStars(){
+  stars = [];
+  const n = Math.round((W * H) / 4200);
+  let seed = 1337;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  for(let i=0;i<n;i++){
+    stars.push({ x: rnd()*W, y: rnd()*H, b: 0.15 + rnd()*0.55, s: rnd()<0.06 ? 1.4 : 0.7 });
+  }
+}
+
+// ---- bodies ----
+let nextId = 1;
+function makeBody(x, y, vx, vy, mass, hue){
+  return { id: nextId++, x, y, vx, vy, mass, hue, flash: 0 };
+}
+function radiusOf(m){ return RBASE * Math.cbrt(m); }
+
+let bodies = [];
+let trails = new Map(); // id -> array of [x,y]
+
+// ---- simulation state ----
+let playing = true;
+let timeScale = 1;
+let flashes = [];
+
+// ---- rewind ring (bounded array, reused) ----
+let states = [];   // each: Float64Array packed [x,y,vx,vy,mass,hue]*n
+let scrubbing = false;
+let viewIndex = 0;
+
+function snapshot(){
+  const n = bodies.length;
+  const a = new Float64Array(n * 6);
+  for(let i=0;i<n;i++){
+    const b = bodies[i], o = i*6;
+    a[o]=b.x; a[o+1]=b.y; a[o+2]=b.vx; a[o+3]=b.vy; a[o+4]=b.mass; a[o+5]=b.hue;
+  }
+  states.push(a);
+  if(states.length > BUFFER) states.shift();
+}
+function restore(a){
+  bodies = [];
+  trails.clear();
+  for(let o=0;o<a.length;o+=6){
+    bodies.push(makeBody(a[o],a[o+1],a[o+2],a[o+3],a[o+4],a[o+5]));
+  }
+}
+
+// ---- physics ----
+function computeAccel(arr, ax, ay){
+  const n = arr.length;
+  for(let i=0;i<n;i++){ ax[i]=0; ay[i]=0; }
+  for(let i=0;i<n;i++){
+    const bi = arr[i];
+    for(let j=i+1;j<n;j++){
+      const bj = arr[j];
+      const dx = bj.x - bi.x, dy = bj.y - bi.y;
+      const r2 = dx*dx + dy*dy + SOFT2;
+      const inv = 1 / Math.sqrt(r2);
+      const inv3 = inv*inv*inv;
+      const f = G * inv3;
+      ax[i] += f * bj.mass * dx; ay[i] += f * bj.mass * dy;
+      ax[j] -= f * bi.mass * dx; ay[j] -= f * bi.mass * dy;
+    }
+  }
+}
+
+const _ax = [], _ay = [], _ax2 = [], _ay2 = [];
+function verlet(dt){
+  const n = bodies.length;
+  if(n === 0) return;
+  computeAccel(bodies, _ax, _ay);
+  for(let i=0;i<n;i++){
+    const b = bodies[i];
+    b.x += b.vx*dt + 0.5*_ax[i]*dt*dt;
+    b.y += b.vy*dt + 0.5*_ay[i]*dt*dt;
+  }
+  computeAccel(bodies, _ax2, _ay2);
+  for(let i=0;i<n;i++){
+    const b = bodies[i];
+    b.vx += 0.5*(_ax[i]+_ax2[i])*dt;
+    b.vy += 0.5*(_ay[i]+_ay2[i])*dt;
+    const sp = Math.hypot(b.vx, b.vy);
+    if(sp > VMAX){ const k = VMAX/sp; b.vx*=k; b.vy*=k; }
+  }
+}
+
+function dropNaN(){
+  let clean = true;
+  for(const b of bodies){
+    if(!(isFinite(b.x)&&isFinite(b.y)&&isFinite(b.vx)&&isFinite(b.vy)&&isFinite(b.mass))){ clean=false; break; }
+  }
+  if(clean) return;
+  bodies = bodies.filter(b => isFinite(b.x)&&isFinite(b.y)&&isFinite(b.vx)&&isFinite(b.vy)&&isFinite(b.mass)&&b.mass>0);
+}
+
+function mergePass(){
+  const n = bodies.length;
+  if(n < 2) return;
+  const dead = new Array(n).fill(false);
+  let merged = false;
+  for(let i=0;i<n;i++){
+    if(dead[i]) continue;
+    let bi = bodies[i];
+    for(let j=i+1;j<n;j++){
+      if(dead[j]) continue;
+      const bj = bodies[j];
+      const dx = bj.x - bi.x, dy = bj.y - bi.y;
+      const d = Math.hypot(dx, dy);
+      const rsum = radiusOf(bi.mass) + radiusOf(bj.mass);
+      if(d < rsum * MERGE_K){
+        const m = bi.mass + bj.mass;
+        const nx = (bi.x*bi.mass + bj.x*bj.mass)/m;
+        const ny = (bi.y*bi.mass + bj.y*bj.mass)/m;
+        const nvx = (bi.vx*bi.mass + bj.vx*bj.mass)/m;
+        const nvy = (bi.vy*bi.mass + bj.vy*bj.mass)/m;
+        const keep = bi.mass >= bj.mass ? bi.hue : bj.hue;
+        bi.x=nx; bi.y=ny; bi.vx=nvx; bi.vy=nvy; bi.mass=m; bi.hue=keep; bi.flash=1;
+        dead[j] = true;
+        merged = true;
+        flashes.push({ x:nx, y:ny, r:radiusOf(m), t:1 });
+        mergeTone(m);
+      }
+    }
+  }
+  if(merged) bodies = bodies.filter((_,k)=>!dead[k]);
+}
+
+function step(scale){
+  const sub = scale > 1 ? Math.ceil(scale) : 1;
+  const dt = BASE_DT * scale / sub;
+  for(let s=0;s<sub;s++) verlet(dt);
+  dropNaN();
+  mergePass();
+  // trails + flash decay
+  if(trailsOn){
+    for(const b of bodies){
+      let t = trails.get(b.id);
+      if(!t){ t = []; trails.set(b.id, t); }
+      t.push([b.x, b.y]);
+      if(t.length > TRAIL_LEN) t.shift();
+    }
+  }
+  for(const b of bodies){ if(b.flash>0) b.flash -= 0.06; }
+  for(const f of flashes){ f.t -= 0.04; f.r += 0.02; }
+  flashes = flashes.filter(f=>f.t>0);
+  snapshot();
+}
+
+// ---- audio ----
+let synth = null, audioReady = false;
+function initAudio(){
+  if(audioReady || typeof Tone === 'undefined') return;
+  try{
+    Tone.start();
+    synth = new Tone.Synth({ oscillator:{type:'triangle'}, envelope:{attack:0.005,decay:0.2,sustain:0,release:0.2} }).toDestination();
+    synth.volume.value = -16;
+    audioReady = true;
+  }catch(e){ /* audio unavailable, run silent */ }
+}
+function mergeTone(mass){
+  if(!soundOn || !audioReady || !synth) return;
+  const f = Math.max(70, 540 / Math.cbrt(mass + 1));
+  try{ synth.triggerAttackRelease(f, '16n'); }catch(e){}
+}
+
+// ---- render ----
+let trailsOn = true, vecOn = false, gridOn = false, soundOn = true;
+
+function hueColor(h, l){ return 'hsl(' + (h|0) + ',70%,' + l + '%)'; }
+
+function drawGrid(){
+  // adaptive spacing in world units
+  let span = 1;
+  const target = 90; // px
+  while(span*cam.zoom < target) span *= 2;
+  while(span*cam.zoom > target*2.5) span /= 2;
+  const [wx0, wy0] = toWorld(0,0);
+  const [wx1, wy1] = toWorld(W,H);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(40,52,68,.5)';
+  ctx.beginPath();
+  for(let x=Math.floor(wx0/span)*span; x<wx1; x+=span){
+    const [sx] = toScreen(x, 0);
+    ctx.moveTo(sx, 0); ctx.lineTo(sx, H);
+  }
+  for(let y=Math.floor(wy0/span)*span; y<wy1; y+=span){
+    const [,sy] = toScreen(0, y);
+    ctx.moveTo(0, sy); ctx.lineTo(W, sy);
+  }
+  ctx.stroke();
+}
+
+function drawBodies(list){
+  for(const b of list){
+    const [sx, sy] = toScreen(b.x, b.y);
+    const rw = radiusOf(b.mass) * cam.zoom;
+    const r = Math.max(1.6, rw);
+    if(sx < -80 || sx > W+80 || sy < -80 || sy > H+80) continue;
+    const isStar = b.mass >= 60;
+    const glow = r * (isStar ? 5 : 3);
+    const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, glow);
+    g.addColorStop(0, hueColor(b.hue, isStar ? 92 : 78));
+    g.addColorStop(0.25, hueColor(b.hue, isStar ? 70 : 55));
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(sx, sy, glow, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = hueColor(b.hue, 88);
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, 6.2832); ctx.fill();
+    if(isStar){
+      // corona rays
+      ctx.strokeStyle = hueColor(b.hue, 80);
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for(let k=0;k<8;k++){
+        const a = k * 0.7854;
+        ctx.moveTo(sx + Math.cos(a)*r*1.4, sy + Math.sin(a)*r*1.4);
+        ctx.lineTo(sx + Math.cos(a)*r*2.6, sy + Math.sin(a)*r*2.6);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if(b.flash > 0){
+      ctx.globalAlpha = b.flash;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(sx, sy, r + (1-b.flash)*18, 0, 6.2832); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if(vecOn){
+      ctx.strokeStyle = 'rgba(127,179,213,.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + b.vx*cam.zoom*0.25, sy + b.vy*cam.zoom*0.25);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawTrails(){
+  ctx.lineWidth = 1;
+  for(const b of bodies){
+    const t = trails.get(b.id);
+    if(!t || t.length < 2) continue;
+    for(let i=1;i<t.length;i++){
+      const a = i / t.length;
+      const [x0,y0] = toScreen(t[i-1][0], t[i-1][1]);
+      const [x1,y1] = toScreen(t[i][0], t[i][1]);
+      ctx.strokeStyle = 'hsla(' + (b.hue|0) + ',60%,60%,' + (a*0.5).toFixed(3) + ')';
+      ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
+    }
+  }
+}
+
+function drawFlashes(){
+  for(const f of flashes){
+    const [sx, sy] = toScreen(f.x, f.y);
+    ctx.globalAlpha = Math.max(0, f.t);
+    ctx.strokeStyle = '#cfe6f4';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(sx, sy, (f.r + (1-f.t)*0.4)*cam.zoom, 0, 6.2832); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// drag-aim arrow
+let aim = null; // {x0,y0,x1,y1}
+function drawAim(){
+  if(!aim) return;
+  const [sx0, sy0] = toScreen(aim.x0, aim.y0);
+  const [sx1, sy1] = toScreen(aim.x1, aim.y1);
+  ctx.strokeStyle = '#d8a657';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(sx0, sy0); ctx.lineTo(sx1, sy1); ctx.stroke();
+  const ang = Math.atan2(sy1-sy0, sx1-sx0);
+  ctx.beginPath();
+  ctx.moveTo(sx1, sy1);
+  ctx.lineTo(sx1 - 9*Math.cos(ang-0.4), sy1 - 9*Math.sin(ang-0.4));
+  ctx.moveTo(sx1, sy1);
+  ctx.lineTo(sx1 - 9*Math.cos(ang+0.4), sy1 - 9*Math.sin(ang+0.4));
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(216,166,87,.25)';
+  ctx.beginPath(); ctx.arc(sx0, sy0, Math.max(2, radiusOf(spawnMass())*cam.zoom), 0, 6.2832); ctx.fill();
+}
+
+// brush cursor ring
+let brushPos = null;
+function drawBrush(){
+  if(!brushPos || tool === 'launch') return;
+  ctx.strokeStyle = tool === 'eraser' ? 'rgba(216,87,87,.7)' : 'rgba(127,179,213,.6)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(brushPos[0], brushPos[1], brushR, 0, 6.2832); ctx.stroke();
+}
+
+function render(){
+  ctx.fillStyle = '#06080d';
+  ctx.fillRect(0,0,W,H);
+  // stars
+  for(const s of stars){
+    ctx.globalAlpha = s.b;
+    ctx.fillStyle = '#cdd6e2';
+    ctx.fillRect(s.x, s.y, s.s, s.s);
+  }
+  ctx.globalAlpha = 1;
+  if(gridOn) drawGrid();
+
+  if(scrubbing && states[viewIndex]){
+    // view a past frame, no live trails
+    const a = states[viewIndex];
+    const list = [];
+    for(let o=0;o<a.length;o+=6) list.push({x:a[o],y:a[o+1],vx:a[o+2],vy:a[o+3],mass:a[o+4],hue:a[o+5],flash:0});
+    drawBodies(list);
+  } else {
+    if(trailsOn) drawTrails();
+    drawFlashes();
+    drawBodies(bodies);
+  }
+  drawAim();
+  drawBrush();
+}
+
+// ---- main loop ----
+let fps = 60, lastT = performance.now(), acc = 0, frames = 0, fpsT = lastT;
+function frame(now){
+  const dtMs = now - lastT; lastT = now;
+  frames++;
+  if(now - fpsT > 500){ fps = Math.round(frames * 1000 / (now - fpsT)); frames = 0; fpsT = now; }
+
+  if(playing && !scrubbing){
+    step(timeScale);
+    scrub.max = Math.max(0, states.length - 1);
+    scrub.value = scrub.max;
+    scrubState.textContent = 'live';
+  }
+  render();
+  hud.textContent = bodies.length + ' bodies  ' + fps + 'fps';
+  requestAnimationFrame(frame);
+}
+
+// ---- input: pointer ----
+let dragging = false, dragStart = null, panning = false, spaceDown = false, panLast = null;
+let brushTimer = 0, lastBrush = null;
+
+cv.addEventListener('pointerdown', e=>{
+  cv.setPointerCapture(e.pointerId);
+  initAudio();
+  fadeHint();
+  const sp = [e.clientX, e.clientY];
+  if(spaceDown){ panning = true; panLast = sp; return; }
+  if(tool === 'launch'){
+    dragging = true;
+    const [wx, wy] = toWorld(sp[0], sp[1]);
+    dragStart = [wx, wy];
+    aim = { x0:wx, y0:wy, x1:wx, y1:wy };
+  } else {
+    brushing = true;
+    brushPos = sp;
+    lastBrush = sp;
+    doBrush(sp, sp);
+  }
+});
+
+cv.addEventListener('pointermove', e=>{
+  const sp = [e.clientX, e.clientY];
+  brushPos = sp;
+  if(panning && panLast){
+    cam.x -= (sp[0]-panLast[0]) / cam.zoom;
+    cam.y -= (sp[1]-panLast[1]) / cam.zoom;
+    panLast = sp;
+    return;
+  }
+  if(dragging && dragStart){
+    const [wx, wy] = toWorld(sp[0], sp[1]);
+    aim = { x0:dragStart[0], y0:dragStart[1], x1:wx, y1:wy };
+    return;
+  }
+  if(brushing){
+    doBrush(lastBrush || sp, sp);
+    lastBrush = sp;
+  }
+});
+
+cv.addEventListener('pointerup', e=>{
+  if(panning){ panning = false; panLast = null; return; }
+  if(dragging && dragStart){
+    const [wx, wy] = toWorld(e.clientX, e.clientY);
+    const vx = (wx - dragStart[0]) * VEL_SCALE;
+    const vy = (wy - dragStart[1]) * VEL_SCALE;
+    bodies.push(makeBody(dragStart[0], dragStart[1], vx, vy, spawnMass(), spawnHue()));
+    dragging = false; dragStart = null; aim = null;
+  }
+  brushing = false; lastBrush = null;
+});
+cv.addEventListener('pointerleave', ()=>{ brushPos = null; });
+
+// brush emit, rate limited
+let brushing = false;
+function doBrush(from, to){
+  const now = performance.now();
+  if(tool === 'eraser'){
+    const [wx, wy] = toWorld(to[0], to[1]);
+    const rw = brushR / cam.zoom;
+    bodies = bodies.filter(b => Math.hypot(b.x-wx, b.y-wy) > rw);
+    return;
+  }
+  if(now - brushTimer < 26) return;
+  brushTimer = now;
+  const [wx, wy] = toWorld(to[0], to[1]);
+  const rw = brushR / cam.zoom;
+  const ang = Math.random() * 6.2832;
+  const rr = Math.sqrt(Math.random()) * rw;
+  const px = wx + Math.cos(ang)*rr, py = wy + Math.sin(ang)*rr;
+  // velocity follows cursor motion
+  const vx = (to[0]-from[0]) / cam.zoom * 6;
+  const vy = (to[1]-from[1]) / cam.zoom * 6;
+  bodies.push(makeBody(px, py, vx, vy, brushMass, 200 + Math.random()*60));
+}
+
+// scroll zoom toward cursor
+cv.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const [wx, wy] = toWorld(e.clientX, e.clientY);
+  const k = e.deltaY < 0 ? 1.12 : 1/1.12;
+  cam.zoom = Math.max(4, Math.min(4000, cam.zoom * k));
+  const [wx2, wy2] = toWorld(e.clientX, e.clientY);
+  cam.x += wx - wx2;
+  cam.y += wy - wy2;
+}, { passive:false });
+
+// keys
+window.addEventListener('keydown', e=>{
+  if(e.target.tagName === 'INPUT') return;
+  if(e.code === 'Space'){ spaceDown = true; cv.style.cursor='grab'; e.preventDefault(); }
+  else if(e.code === 'KeyP'){ togglePlay(); }
+  else if(e.code === 'ArrowRight' && !playing){ stepOnce(); }
+  else if(e.code === 'ArrowLeft' && !playing){ stepBack(); }
+});
+window.addEventListener('keyup', e=>{
+  if(e.code === 'Space'){ spaceDown = false; cv.style.cursor='crosshair'; }
+});
+
+function stepOnce(){ step(timeScale); scrub.max = states.length-1; scrub.value = scrub.max; }
+function stepBack(){
+  if(states.length < 2) return;
+  states.pop();
+  restore(states[states.length-1]);
+  scrub.max = states.length-1; scrub.value = scrub.max;
+}
+
+// ---- scrub bar ----
+const scrub = document.getElementById('scrub');
+const scrubState = document.getElementById('scrubstate');
+scrub.addEventListener('input', ()=>{
+  scrubbing = true;
+  viewIndex = +scrub.value;
+  const back = (states.length-1) - viewIndex;
+  scrubState.textContent = '-' + back + 'f';
+});
+scrub.addEventListener('change', ()=>{
+  // release: branch from viewed frame
+  if(states[viewIndex]) restore(states[viewIndex]);
+  states.length = viewIndex + 1;
+  scrubbing = false;
+  scrub.max = states.length-1;
+  scrub.value = scrub.max;
+  scrubState.textContent = 'live';
+});
+
+// ---- UI: spawn settings ----
+let spawnType = 'planet', sizeMul = 1;
+function spawnMass(){ return MASS[spawnType] * sizeMul; }
+let hueRot = 0;
+function spawnHue(){
+  if(spawnType === 'star') return 45 + Math.random()*15;
+  if(spawnType === 'dust') return 200 + Math.random()*40;
+  hueRot = (hueRot + 67) % 360;
+  return hueRot;
+}
+
+document.querySelectorAll('[data-mass]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    spawnType = btn.dataset.mass;
+    document.querySelectorAll('[data-mass]').forEach(b=>b.classList.toggle('on', b===btn));
+  });
+});
+const sizeEl = document.getElementById('size'), sizeVal = document.getElementById('sizeVal');
+sizeEl.addEventListener('input', ()=>{ sizeMul = +sizeEl.value; sizeVal.textContent = sizeMul.toFixed(1)+'x'; });
+
+// ---- UI: tool ----
+let tool = 'launch', brushR = 50, brushMass = 0.6;
+const toolBtns = { launch:document.getElementById('toolSpawn'), brush:document.getElementById('toolBrush'), eraser:document.getElementById('toolErase') };
+function setTool(t){
+  tool = t;
+  for(const k in toolBtns) toolBtns[k].classList.toggle('on', k===t);
+  cv.style.cursor = t==='launch' ? 'crosshair' : 'none';
+}
+toolBtns.launch.onclick = ()=>setTool('launch');
+toolBtns.brush.onclick = ()=>setTool('brush');
+toolBtns.eraser.onclick = ()=>setTool('eraser');
+
+const brushSizeEl = document.getElementById('brushSize'), brushSizeVal = document.getElementById('brushSizeVal');
+brushSizeEl.addEventListener('input', ()=>{ brushR = +brushSizeEl.value; brushSizeVal.textContent = brushR; });
+const brushMassEl = document.getElementById('brushMass'), brushMassVal = document.getElementById('brushMassVal');
+brushMassEl.addEventListener('input', ()=>{ brushMass = +brushMassEl.value; brushMassVal.textContent = brushMass.toFixed(1); });
+
+// ---- UI: toggles ----
+document.getElementById('tgVec').addEventListener('change', e=>vecOn=e.target.checked);
+document.getElementById('tgTrails').addEventListener('change', e=>{ trailsOn=e.target.checked; if(!trailsOn) trails.clear(); });
+document.getElementById('tgGrid').addEventListener('change', e=>gridOn=e.target.checked);
+document.getElementById('tgSound').addEventListener('change', e=>{ soundOn=e.target.checked; if(soundOn) initAudio(); });
+
+// ---- UI: play/speed/clear/reset ----
+const playBtn = document.getElementById('playBtn');
+function togglePlay(){ playing = !playing; playBtn.textContent = playing ? 'pause' : 'play'; }
+playBtn.onclick = togglePlay;
+const speedEl = document.getElementById('speed'), speedVal = document.getElementById('speedVal');
+speedEl.addEventListener('input', ()=>{ timeScale = +speedEl.value; speedVal.textContent = (timeScale%1===0?timeScale:timeScale.toFixed(2))+'x'; });
+document.getElementById('clearBtn').onclick = ()=>{ bodies = []; trails.clear(); flashes = []; states = []; };
+document.getElementById('resetBtn').onclick = ()=>{ loadPreset('solar'); fitView(); };
+
+// ---- presets ----
+function clearState(){ bodies = []; trails.clear(); flashes = []; states = []; }
+function loadPreset(name){
+  clearState();
+  nextId = 1;
+  if(name === 'solar'){
+    const M = 40;
+    bodies.push(makeBody(0,0,0,0,M,48));
+    const data = [[1.6, 6, 0.0], [2.7, 8, 1.5], [4.0, 5, 3.2]];
+    for(const [r, m, ph] of data){
+      const v = Math.sqrt(G*M/r);
+      const a = ph;
+      bodies.push(makeBody(r*Math.cos(a), r*Math.sin(a), -v*Math.sin(a), v*Math.cos(a), m, 30 + r*60));
+    }
+  } else if(name === 'binary'){
+    const m = 30, sep = 2.2, r = sep/2;
+    const v = 0.5 * Math.sqrt(G*m/sep) * Math.sqrt(2); // each orbits common center
+    bodies.push(makeBody(-r, 0, 0, -v, m, 40));
+    bodies.push(makeBody( r, 0, 0,  v, m, 20));
+  } else if(name === 'figure8'){
+    bodies.push(makeBody(-0.97000436, 0.24308753, 0.46620369, 0.43236573, 1, 200));
+    bodies.push(makeBody( 0.97000436,-0.24308753, 0.46620369, 0.43236573, 1, 50));
+    bodies.push(makeBody( 0, 0, -0.93240737, -0.86473146, 1, 320));
+  } else if(name === 'cluster'){
+    for(let i=0;i<12;i++){
+      const a = Math.random()*6.2832, rr = Math.random()*3;
+      const sp = (Math.random()-0.5)*1.5;
+      bodies.push(makeBody(Math.cos(a)*rr, Math.sin(a)*rr, -Math.sin(a)*sp, Math.cos(a)*sp, 2 + Math.random()*10, Math.random()*360));
+    }
+  }
+}
+function fitView(){
+  if(bodies.length === 0){ cam.x=0; cam.y=0; cam.zoom=120; return; }
+  let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+  for(const b of bodies){ minx=Math.min(minx,b.x); miny=Math.min(miny,b.y); maxx=Math.max(maxx,b.x); maxy=Math.max(maxy,b.y); }
+  cam.x = (minx+maxx)/2; cam.y = (miny+maxy)/2;
+  const ext = Math.max(maxx-minx, maxy-miny, 1);
+  cam.zoom = Math.min(W,H) / (ext * 1.6);
+}
+document.getElementById('loadPreset').onclick = ()=>{
+  loadPreset(document.getElementById('preset').value);
+  fitView();
+};
+
+// ---- save / load (browser storage) ----
+const STORE_KEY = 'gravity.saves.v1';
+function readSaves(){
+  try{ return JSON.parse(window.localStorage.getItem(STORE_KEY) || '{}'); }catch(e){ return {}; }
+}
+function writeSaves(o){
+  try{ window.localStorage.setItem(STORE_KEY, JSON.stringify(o)); }catch(e){}
+}
+function serialize(){
+  return bodies.map(b=>({
+    x:round(b.x), y:round(b.y), vx:round(b.vx), vy:round(b.vy), m:round(b.mass), h:Math.round(b.hue)
+  }));
+}
+function deserialize(arr){
+  clearState();
+  for(const b of arr) bodies.push(makeBody(b.x,b.y,b.vx,b.vy,b.m,b.h));
+}
+function round(v){ return Math.round(v*1000)/1000; }
+
+function renderSaves(){
+  const box = document.getElementById('saves');
+  const o = readSaves();
+  box.innerHTML = '';
+  const names = Object.keys(o);
+  if(names.length === 0){ box.innerHTML = '<div style="color:#5a6675">no saves</div>'; return; }
+  for(const name of names){
+    const row = document.createElement('div');
+    row.className = 'saveitem';
+    const s = document.createElement('span'); s.textContent = name;
+    const lb = document.createElement('button'); lb.textContent='load';
+    const db = document.createElement('button'); db.textContent='x'; db.className='warn';
+    lb.onclick = ()=>{ deserialize(o[name]); fitView(); };
+    db.onclick = ()=>{ const all=readSaves(); delete all[name]; writeSaves(all); renderSaves(); };
+    row.appendChild(s); row.appendChild(lb); row.appendChild(db);
+    box.appendChild(row);
+  }
+}
+document.getElementById('saveBtn').onclick = ()=>{
+  const inp = document.getElementById('saveName');
+  const name = (inp.value || '').trim();
+  if(!name){ note('name the save first'); return; }
+  const all = readSaves();
+  all[name] = serialize();
+  writeSaves(all);
+  inp.value = '';
+  renderSaves();
+  note('saved ' + name);
+};
+
+// ---- share ----
+function note(msg){ document.getElementById('note').textContent = msg; }
+function encodeSystem(){
+  const arr = serialize();
+  const json = JSON.stringify(arr);
+  if(typeof LZString === 'undefined') return null;
+  return LZString.compressToEncodedURIComponent(json);
+}
+function decodeSystem(s){
+  try{
+    const json = LZString.decompressFromEncodedURIComponent(s);
+    if(!json) return null;
+    return JSON.parse(json);
+  }catch(e){ return null; }
+}
+const shareBtn = document.getElementById('shareBtn');
+shareBtn.onclick = ()=>{
+  const enc = encodeSystem();
+  if(!enc){ note('share unavailable'); return; }
+  const url = location.origin + location.pathname + '#' + enc;
+  if(url.length > 2000){
+    shareBtn.disabled = true;
+    note('too many bodies to share');
+    return;
+  }
+  location.hash = enc;
+  const copy = navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject();
+  copy.then(()=>note('link copied')).catch(()=>note('link in address bar'));
+};
+function refreshShareState(){
+  const enc = encodeSystem();
+  const len = enc ? (location.origin + location.pathname + '#' + enc).length : 0;
+  shareBtn.disabled = !enc || len > 2000;
+  if(enc && len > 2000) note('too many bodies to share');
+}
+
+// ---- hint fade ----
+let hintFaded = false;
+function fadeHint(){
+  if(hintFaded) return;
+  hintFaded = true;
+  const h = document.getElementById('hint');
+  h.style.opacity = '0';
+  setTimeout(()=>h.remove(), 1100);
+}
+setTimeout(fadeHint, 6000);
+
+// ---- boot ----
+const hud = document.getElementById('hud');
+resize();
+(function boot(){
+  let loaded = false;
+  if(location.hash.length > 1){
+    const arr = decodeSystem(location.hash.slice(1));
+    if(arr && arr.length){ deserialize(arr); fitView(); loaded = true; }
+  }
+  if(!loaded){ loadPreset('solar'); fitView(); }
+  renderSaves();
+  // seed one snapshot so scrub has a frame
+  snapshot();
+  requestAnimationFrame(frame);
+})();
+window.addEventListener('hashchange', ()=>{
+  const arr = decodeSystem(location.hash.slice(1));
+  if(arr && arr.length){ deserialize(arr); fitView(); }
+});
+</script>
+</body>
+</html>
